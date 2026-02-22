@@ -25,6 +25,18 @@ See `docs/MCP.md` and `docs/workflows/README.md`.
 
 Berry integrates with Cursor, Codex, Claude Code, and Gemini CLI via config files committed to your repo.
 
+## Supported verifier backends
+
+Berry’s current verification method requires token logprobs (Chat Completions-style `logprobs` + `top_logprobs`).
+
+Supported today:
+- `openai` (default): OpenAI-compatible Chat Completions endpoints with logprobs (OpenAI, OpenRouter, local vLLM, or any compatible `base_url`)
+- `dummy`: deterministic offline backend for tests/dev
+
+Not supported yet:
+- Anthropic (OpenAI-compat layer ignores `logprobs`)
+- Gemini / Vertex AI (logprobs exist, but Berry needs a dedicated backend adapter)
+
 ## Quickstart
 
 1) Install (from this repo):
