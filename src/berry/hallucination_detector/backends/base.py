@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import concurrent.futures as cf
-from dataclasses import dataclass
 import math
+from dataclasses import dataclass
 from typing import Any, List, Optional, Sequence
 
 from .openai_backend import TextResult, call_text_chat

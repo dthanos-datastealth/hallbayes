@@ -185,6 +185,22 @@ async def test_mcp_server_run_and_spans(tmp_repo: Path, tmp_berry_home: Path):
             assert fgr.isError is False
             assert "Test Repo" in fgr.structuredContent["result"]["text"]
 
+            # add_file_span should fail closed for paths outside project_root
+            outside = tmp_repo.parent / "outside.txt"
+            outside.write_text("secret\n", encoding="utf-8")
+            denied = await session.call_tool(
+                "add_file_span",
+                {
+                    "run_id": run_id,
+                    "path": str(outside),
+                    "start_line": 1,
+                    "end_line": 1,
+                },
+            )
+            assert denied.isError is True
+            assert denied.content
+            assert "File read not allowed" in denied.content[0].text
+
             # Distill span
             dist = await session.call_tool(
                 "distill_span",

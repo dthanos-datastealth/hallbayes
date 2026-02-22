@@ -275,11 +275,7 @@ class RunStore:
                 missing = [c for c in s.cites if c not in run.spans]
                 if missing:
                     raise EnforcementError(f"Microplan step cites unknown spans: {missing}")
-                untrusted = [
-                    c
-                    for c in s.cites
-                    if not bool((run.spans.get(c).meta or {}).get("trusted", False))
-                ]
+                untrusted = [c for c in s.cites if not bool((run.spans[c].meta or {}).get("trusted", False))]
                 if untrusted:
                     raise EnforcementError(f"Microplan step cites untrusted spans: {untrusted}")
                 return s

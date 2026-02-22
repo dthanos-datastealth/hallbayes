@@ -11,8 +11,8 @@ from typing import Optional
 
 from . import __version__
 from .audit import export_events, prune_events
+from .auth_flow import run_login_flow
 from .clients import (
-    berry_server_spec,
     berry_server_specs,
     render_claude_mcp_json,
     render_codex_config_toml,
@@ -24,8 +24,10 @@ from .clients import (
     write_cursor_mcp_json,
     write_gemini_settings_json,
 )
-from .config import BerryConfig, load_config, save_global_config
+from .config import load_config, save_global_config
+from .integration import integrate, results_as_json
 from .mcp_server import main as mcp_classic_main
+from .paths import ensure_berry_home, license_path, mcp_env_path
 from .recipes import (
     builtin_recipes,
     export_recipes,
@@ -35,9 +37,6 @@ from .recipes import (
 )
 from .support import create_support_bundle
 from .verify import verify_blob_with_cosign
-from .paths import ensure_berry_home, license_path, mcp_env_path
-from .integration import integrate, results_as_json
-from .auth_flow import run_login_flow
 
 # --------------------------------------------------------------------
 # Claude Code skill file content (repo-scoped).
@@ -268,11 +267,11 @@ def cmd_config_set(args: argparse.Namespace) -> int:
 
     if key in bool_keys:
         truthy = raw.strip().lower() in {"1", "true", "yes", "y", "on"}
-        new_cfg = replace(cfg, **{key: bool(truthy)})
+        new_cfg = replace(cfg, **{key: bool(truthy)})  # type: ignore[arg-type]
     elif key in float_keys:
-        new_cfg = replace(cfg, **{key: float(raw)})
+        new_cfg = replace(cfg, **{key: float(raw)})  # type: ignore[arg-type]
     elif key in int_keys:
-        new_cfg = replace(cfg, **{key: int(raw)})
+        new_cfg = replace(cfg, **{key: int(raw)})  # type: ignore[arg-type]
     elif key == "exec_allowed_commands":
         cmds = [c.strip() for c in raw.split(",") if c.strip()]
         if not cmds:
@@ -295,7 +294,7 @@ def cmd_config_set(args: argparse.Namespace) -> int:
             # Empty string unsets.
             new_cfg = replace(cfg, brave_search_api_key=(v if v else None))
         else:
-            new_cfg = replace(cfg, **{key: v})
+            new_cfg = replace(cfg, **{key: v})  # type: ignore[arg-type]
     else:
         raise SystemExit(f"Unsupported key: {key}")
 
@@ -352,7 +351,7 @@ def cmd_auth_status(_: argparse.Namespace) -> int:
 
     if not p.exists():
         print("Not authenticated.")
-        print(f"Run 'berry auth login' to authenticate.")
+        print("Run 'berry auth login' to authenticate.")
         return 1
 
     try:
@@ -361,7 +360,7 @@ def cmd_auth_status(_: argparse.Namespace) -> int:
 
         if not api_key:
             print("Not authenticated.")
-            print(f"Run 'berry auth login' to authenticate.")
+            print("Run 'berry auth login' to authenticate.")
             return 1
 
         # Mask the API key

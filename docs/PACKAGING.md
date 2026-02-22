@@ -8,12 +8,12 @@ Workflow: `.github/workflows/release-macos.yml`
 
 On `v*` tags it:
 
-1) Builds a standalone `berry` macOS executable with PyInstaller (arm64 + x86_64)
+1) Builds a standalone `berry` macOS executable with PyInstaller (arm64)
 2) Codesigns the executable (Developer ID Application)
 3) Builds a `.pkg` installer and signs it (Developer ID Installer)
 4) Notarizes + staples the pkg
 5) Installs the pkg on the macOS runner and runs a smoke‑test (`scripts/validate_macos_pkg.sh`)
-6) Uploads both pkgs to the GitHub release
+6) Uploads the pkg to the GitHub release
 7) Optionally updates the `hassana-labs/homebrew-tap` cask with new version + sha256 (or attach `berry.rb` for manual update)
 
 ## Required GitHub secrets (for signed + notarized `.pkg`)

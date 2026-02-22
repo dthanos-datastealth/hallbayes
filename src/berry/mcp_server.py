@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Berry Classic MCP server (approved surface only).
 
 This file replaces the previous broad-surface server.
@@ -21,6 +19,8 @@ All other tools (web, exec, repo ops, grants, microplans, verified writes, healt
 are intentionally not registered.
 """
 
+from __future__ import annotations
+
 import argparse
 import contextlib
 import json
@@ -32,10 +32,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .config import load_config
-from .enforcement import EnforcementError, RunStore, RunState, SpanRecord
-from .hallucination_detector.k8s_wrapper import (
-    run_detect_hallucination_k8s,
-    run_audit_trace_budget_k8s,
+from .enforcement import EnforcementError, RunState, RunStore, SpanRecord
+from .hallucination_detector.core import (
+    run_audit_trace_budget,
+    run_detect_hallucination,
 )
 from .mcp_env import load_mcp_env
 from .paths import ensure_berry_home, resolve_user_path
@@ -248,8 +248,8 @@ def create_server(*, project_root: Optional[Path], host: str = "127.0.0.1", port
 
                 run = _load_persisted_run(rid)
                 # Install into store.
-                store._runs[rid] = run  # type: ignore[attr-defined]
-                store._active_run_id = rid  # type: ignore[attr-defined]
+                store._runs[rid] = run
+                store._active_run_id = rid
                 return {"run_id": run.run_id, "run_dir": str(_run_dir(run.run_id)), "status": "loaded"}
             except FileNotFoundError:
                 raise RuntimeError(f"No persisted run found for run_id={rid}")
@@ -416,11 +416,9 @@ def create_server(*, project_root: Optional[Path], host: str = "127.0.0.1", port
             return {"run_id": run.run_id, "sid": rec.sid, "parent_sid": psid, "lines": len(matched)}
 
     # -----------------------------
-    # Verification tools (via K8s berry-service middleware)
+    # Verification tools (local core implementation)
     # -----------------------------
-    # These tools call the berry-service Kubernetes endpoint for centralized
-    # authentication and budget tracking. Requires OPENAI_API_KEY (sk-* format).
-    # Set BERRY_SERVICE_URL to override the default service URL.
+    # These tools run locally and rely on the configured verifier backend.
 
     @mcp.tool()
     def detect_hallucination(
@@ -435,16 +433,19 @@ def create_server(*, project_root: Optional[Path], host: str = "127.0.0.1", port
     ) -> Dict[str, Any]:
         """Information-budget diagnostic per claim."""
         with _redirect_stdout_to_stderr():
-            return run_detect_hallucination_k8s(
-                answer=str(answer or ""),
-                spans=list(spans or []),
-                verifier_model=str(verifier_model or "gpt-4o-mini"),
-                default_target=float(default_target or 0.95),
-                max_claims=int(max_claims or 25),
-                require_citations=bool(require_citations),
-                context_mode=str(context_mode or "cited"),
-                timeout_s=float(timeout_s or 60.0),
-            )
+            try:
+                return run_detect_hallucination(
+                    answer=str(answer or ""),
+                    spans=list(spans or []),
+                    verifier_model=str(verifier_model or "gpt-4o-mini"),
+                    default_target=float(default_target or 0.95),
+                    max_claims=int(max_claims or 25),
+                    require_citations=bool(require_citations),
+                    context_mode=str(context_mode or "cited"),
+                    timeout_s=float(timeout_s or 60.0),
+                )
+            except Exception as e:
+                return {"flagged": True, "under_budget": True, "error": str(e), "details": []}
 
     @mcp.tool()
     def audit_trace_budget(
@@ -458,17 +459,31 @@ def create_server(*, project_root: Optional[Path], host: str = "127.0.0.1", port
     ) -> Dict[str, Any]:
         """Score explicit (claim, cites) steps."""
         with _redirect_stdout_to_stderr():
-            return run_audit_trace_budget_k8s(
-                steps=list(steps or []),
-                spans=list(spans or []),
-                verifier_model=str(verifier_model or "gpt-4o-mini"),
-                default_target=float(default_target or 0.95),
-                require_citations=bool(require_citations),
-                context_mode=str(context_mode or "cited"),
-                timeout_s=float(timeout_s or 60.0),
-            )
+            try:
+                return run_audit_trace_budget(
+                    steps=list(steps or []),
+                    spans=list(spans or []),
+                    verifier_model=str(verifier_model or "gpt-4o-mini"),
+                    default_target=float(default_target or 0.95),
+                    require_citations=bool(require_citations),
+                    context_mode=str(context_mode or "cited"),
+                    timeout_s=float(timeout_s or 60.0),
+                )
+            except Exception as e:
+                return {"flagged": True, "under_budget": True, "error": str(e), "details": []}
 
     return mcp
+
+
+def _find_repo_root(start: Path) -> Path:
+    p = Path(start).resolve()
+    for _ in range(50):
+        if (p / ".git").exists():
+            return p
+        if p.parent == p:
+            break
+        p = p.parent
+    return Path(start).resolve()
 
 
 def main(argv: Optional[List[str]] = None) -> None:
@@ -480,7 +495,21 @@ def main(argv: Optional[List[str]] = None) -> None:
     parser.add_argument("--server", default="classic")  # kept for compatibility; ignored
     args = parser.parse_args(argv)
 
-    project_root = Path(args.project_root).resolve() if args.project_root else None
+    project_root_raw = str(args.project_root or "").strip()
+    if not project_root_raw:
+        project_root_raw = (os.environ.get("BERRY_PROJECT_ROOT") or "").strip()
+
+    project_root: Optional[Path]
+    if project_root_raw:
+        project_root = Path(project_root_raw).expanduser().resolve()
+    else:
+        inferred = _find_repo_root(Path.cwd())
+        allow_non_git = (os.environ.get("BERRY_ALLOW_NON_GIT_ROOT") or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+        if (inferred / ".git").exists() or allow_non_git:
+            project_root = inferred
+        else:
+            project_root = None
+
     mcp = create_server(project_root=project_root, host=str(args.host), port=int(args.port))
     if args.transport == "stdio":
         mcp.run(transport="stdio")

@@ -58,5 +58,5 @@ jobs:
     with:
       base64-subjects-as-file: ${{ needs.build.outputs.subjects_handle }}
       provenance-name: berry.intoto.jsonl
-      upload-assets: false
-      private-repository: true
+      upload-assets: true
+      private-repository: false

@@ -89,6 +89,7 @@ berry auth --unset    # remove key
 ## Safety model
 
 - `add_file_span` respects `allowed_roots` and the project root for file access.
+- If no project root is configured and `allowed_roots` is empty, file reads fail closed.
 - Config options like `allow_write`, `allow_exec`, `allow_web` are preserved for future tool expansions.
 - When writes are enabled (future), paths must be inside the repo root or an allowed root.
 

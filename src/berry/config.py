@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 import json
+import os
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -11,11 +11,11 @@ from .paths import config_path, ensure_berry_home
 
 @dataclass(frozen=True)
 class BerryConfig:
-    # Safety / permissions - all enabled by default
-    allow_write: bool = True
-    allow_exec: bool = True
-    allow_web: bool = True
-    allow_web_private: bool = True
+    # Safety / permissions - all disabled by default
+    allow_write: bool = False
+    allow_exec: bool = False
+    allow_web: bool = False
+    allow_web_private: bool = False
     allowed_roots: List[str] = field(default_factory=list)
 
     # No approval handshakes by default

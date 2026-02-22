@@ -17,17 +17,16 @@ from __future__ import annotations
 import http.server
 import json
 import os
-import secrets
 import socketserver
 import sys
 import threading
 import time
 import urllib.parse
+import urllib.request
 import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-import urllib.request
 
 # Default service URLs
 DEFAULT_BASE_URL = "https://strawberry.hassana.io"
@@ -191,7 +190,6 @@ def localhost_callback_flow(timeout: int = 300, verbose: bool = False) -> AuthRe
     server_thread.daemon = True
     server_thread.start()
 
-    interrupted = False
     try:
         # Request session from API
         print(f"Contacting {base_url}...", flush=True)
@@ -213,7 +211,7 @@ def localhost_callback_flow(timeout: int = 300, verbose: bool = False) -> AuthRe
             return AuthResult(success=False, error="Failed to get auth URL from server")
 
         # Open browser
-        print(f"\nOpening browser to authenticate...", flush=True)
+        print("\nOpening browser to authenticate...", flush=True)
         print(f"If the browser doesn't open, visit:\n  {auth_url}\n", flush=True)
 
         if not webbrowser.open(auth_url):
@@ -288,8 +286,7 @@ def localhost_callback_flow(timeout: int = 300, verbose: bool = False) -> AuthRe
             time.sleep(poll_interval)
 
     except KeyboardInterrupt:
-        # User cancelled - mark as interrupted so finally block skips shutdown()
-        interrupted = True
+        # User cancelled.
         return AuthResult(success=False, error="Authentication cancelled")
     except urllib.error.URLError as e:
         return AuthResult(success=False, error=f"Network error: {e}")
@@ -361,11 +358,13 @@ def device_code_flow(timeout: int = 900, verbose: bool = False) -> AuthResult:
         print("\n" + "=" * 60, flush=True)
         print("\nWaiting for authorization...", flush=True)
 
-        # Try to open browser
-        try:
-            webbrowser.open(verification_uri_complete)
-        except Exception:
-            pass  # Browser open is optional
+        # Try to open browser (optional).
+        url_to_open = verification_uri_complete or verification_uri
+        if url_to_open:
+            try:
+                webbrowser.open(str(url_to_open))
+            except Exception:
+                pass
 
         # Poll for completion
         start_time = time.time()
@@ -409,7 +408,7 @@ def device_code_flow(timeout: int = 900, verbose: bool = False) -> AuthResult:
                     else:
                         return AuthResult(success=False, error=body.get("message", error))
                 raise
-            except Exception as e:
+            except Exception:
                 # Network error, retry
                 continue
 
@@ -537,7 +536,7 @@ def run_login_flow(
 
     # Save credentials
     config_path = save_credentials(result.api_key)
-    print(f"\nAuthentication successful!")
+    print("\nAuthentication successful!")
     print(f"Credentials saved to: {config_path}")
 
     # Update global MCP configs

@@ -1,19 +1,20 @@
 """Unit tests for Kubernetes service wrappers."""
 
-import pytest
-from unittest.mock import patch, MagicMock
 import os
 import sys
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from berry.hallucination_detector.k8s_wrapper import (
-    run_detect_hallucination_k8s,
-    run_audit_trace_budget_k8s,
-    _get_service_url,
-    _get_api_key,
     DEFAULT_BERRY_SERVICE_URL,
+    _get_api_key,
+    _get_service_url,
+    run_audit_trace_budget_k8s,
+    run_detect_hallucination_k8s,
 )
 
 

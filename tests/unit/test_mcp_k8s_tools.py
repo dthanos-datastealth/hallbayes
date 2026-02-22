@@ -1,9 +1,10 @@
-"""Tests for MCP server verification tools (now via K8s service)."""
+"""Tests for MCP server verification tools (local core implementation)."""
 
-import pytest
-from unittest.mock import patch, MagicMock
 import os
 import sys
+from unittest.mock import patch
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
@@ -54,13 +55,13 @@ class TestMCPServerTools:
         assert expected.issubset(tool_names)
 
 
-class TestVerificationToolsCallK8sWrapper:
-    """Test that verification tools call the K8s wrapper functions."""
+class TestVerificationToolsCallCore:
+    """Test that verification tools call the core functions."""
 
-    @patch("berry.mcp_server.run_detect_hallucination_k8s")
-    def test_detect_hallucination_calls_k8s_wrapper(self, mock_wrapper):
-        """detect_hallucination tool calls the K8s wrapper."""
-        mock_wrapper.return_value = {
+    @patch("berry.mcp_server.run_detect_hallucination")
+    def test_detect_hallucination_calls_core(self, mock_core):
+        """detect_hallucination tool calls the core implementation."""
+        mock_core.return_value = {
             "flagged": False,
             "under_budget": False,
             "summary": {"claims_scored": 1},
@@ -86,13 +87,13 @@ class TestVerificationToolsCallK8sWrapper:
             spans=[{"sid": "S0", "text": "Evidence"}],
         )
 
-        mock_wrapper.assert_called_once()
+        mock_core.assert_called_once()
         assert result["flagged"] is False
 
-    @patch("berry.mcp_server.run_audit_trace_budget_k8s")
-    def test_audit_trace_budget_calls_k8s_wrapper(self, mock_wrapper):
-        """audit_trace_budget tool calls the K8s wrapper."""
-        mock_wrapper.return_value = {
+    @patch("berry.mcp_server.run_audit_trace_budget")
+    def test_audit_trace_budget_calls_core(self, mock_core):
+        """audit_trace_budget tool calls the core implementation."""
+        mock_core.return_value = {
             "flagged": False,
             "under_budget": False,
             "summary": {"steps_scored": 1},
@@ -118,7 +119,7 @@ class TestVerificationToolsCallK8sWrapper:
             spans=[{"sid": "S0", "text": "Evidence"}],
         )
 
-        mock_wrapper.assert_called_once()
+        mock_core.assert_called_once()
         assert result["flagged"] is False
 
 

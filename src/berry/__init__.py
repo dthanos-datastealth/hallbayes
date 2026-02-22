@@ -11,7 +11,6 @@ try:
     from importlib.metadata import PackageNotFoundError, version
 
     __version__ = version("berry")
-except Exception:  # pragma: no cover
+except PackageNotFoundError:  # pragma: no cover
     # Fallback for environments where metadata isn't available.
     __version__ = "0.0.0"
-

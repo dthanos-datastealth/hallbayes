@@ -10,8 +10,8 @@ Environment variables:
 
 from __future__ import annotations
 
-import os
 import logging
+import os
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -232,7 +232,7 @@ def run_audit_trace_budget_k8s(
         cites = st.get("cites", [])
         confidence = st.get("confidence")
         if claim:
-            step = {"claim": str(claim), "cites": list(cites or [])}
+            step: Dict[str, Any] = {"claim": str(claim), "cites": list(cites or [])}
             if confidence is not None:
                 step["confidence"] = float(confidence)
             formatted_steps.append(step)

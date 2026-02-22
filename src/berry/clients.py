@@ -3,9 +3,10 @@ from __future__ import annotations
 import base64
 import json
 import urllib.parse
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, cast
 
 from .mcp_env import load_mcp_env
 
@@ -43,16 +44,17 @@ def berry_server_specs(*, profile: str = "classic", name: str = "berry") -> List
     return [berry_server_spec(name=name, server="classic")]
 
 
-def _normalize_specs(spec_or_specs: Optional[object]) -> List[McpServerSpec]:
+def _normalize_specs(spec_or_specs: object | None) -> List[McpServerSpec]:
     if spec_or_specs is None:
         return [berry_server_spec()]
     if isinstance(spec_or_specs, McpServerSpec):
         return [spec_or_specs]
-    # duck-type iterable of specs
-    try:
-        return [s for s in list(spec_or_specs) if isinstance(s, McpServerSpec)]  # type: ignore[arg-type]
-    except Exception:
-        return [berry_server_spec()]
+    # Duck-type iterable of specs.
+    if isinstance(spec_or_specs, Iterable):
+        items = cast(Iterable[object], spec_or_specs)
+        out = [s for s in items if isinstance(s, McpServerSpec)]
+        return out or [berry_server_spec()]
+    return [berry_server_spec()]
 
 
 def write_cursor_mcp_json(*, project_root: Path, spec: Optional[object] = None, force: bool = False) -> Path:
@@ -72,7 +74,7 @@ def render_cursor_mcp_json(specs: object) -> str:
 
 
 def render_cursor_deeplink(spec: McpServerSpec) -> str:
-    payload = {"command": spec.command, "args": spec.args}
+    payload: Dict[str, object] = {"command": spec.command, "args": spec.args}
     if spec.env:
         payload["env"] = spec.env
     config_json = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")

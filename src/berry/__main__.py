@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-import os
 
 # Handle PyInstaller single-file mode
 if getattr(sys, 'frozen', False):

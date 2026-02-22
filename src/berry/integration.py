@@ -4,8 +4,8 @@ import json
 import os
 import shutil
 import subprocess
-from pathlib import Path
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Iterable, List, Optional
 
 from .clients import McpServerSpec, berry_server_spec
@@ -224,12 +224,13 @@ def integrate_with_gemini(*, spec: Optional[McpServerSpec] = None, dry_run: bool
 
 def _system_paths() -> dict:
     import sys
-    if sys.platform == "darwin":
+    platform: str = sys.platform
+    if platform == "darwin":
         return {
             "claude_managed": Path("/Library/Application Support/ClaudeCode/managed-mcp.json"),
             "gemini_system": Path("/Library/Application Support/GeminiCli/settings.json"),
         }
-    if sys.platform.startswith("linux"):
+    if platform.startswith("linux"):
         return {
             "claude_managed": Path("/etc/claude-code/managed-mcp.json"),
             "gemini_system": Path("/etc/gemini-cli/settings.json"),
