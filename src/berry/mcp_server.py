@@ -420,11 +420,18 @@ def create_server(*, project_root: Optional[Path], host: str = "127.0.0.1", port
     # -----------------------------
     # These tools run locally and rely on the configured verifier backend.
 
+    def _default_verifier_model() -> str:
+        return (
+            (os.environ.get("BERRY_VERIFIER_MODEL") or "").strip()
+            or (os.environ.get("BERRY_MODEL") or "").strip()
+            or "gpt-4o-mini"
+        )
+
     @mcp.tool()
     def detect_hallucination(
         answer: str,
         spans: List[Dict[str, str]],
-        verifier_model: str = "gpt-4o-mini",
+        verifier_model: Optional[str] = None,
         default_target: float = 0.95,
         max_claims: int = 25,
         require_citations: bool = False,
@@ -437,7 +444,7 @@ def create_server(*, project_root: Optional[Path], host: str = "127.0.0.1", port
                 return run_detect_hallucination(
                     answer=str(answer or ""),
                     spans=list(spans or []),
-                    verifier_model=str(verifier_model or "gpt-4o-mini"),
+                    verifier_model=str(verifier_model or _default_verifier_model()),
                     default_target=float(default_target or 0.95),
                     max_claims=int(max_claims or 25),
                     require_citations=bool(require_citations),
@@ -451,7 +458,7 @@ def create_server(*, project_root: Optional[Path], host: str = "127.0.0.1", port
     def audit_trace_budget(
         steps: List[Dict[str, Any]],
         spans: List[Dict[str, str]],
-        verifier_model: str = "gpt-4o-mini",
+        verifier_model: Optional[str] = None,
         default_target: float = 0.95,
         require_citations: bool = False,
         context_mode: str = "cited",
@@ -463,7 +470,7 @@ def create_server(*, project_root: Optional[Path], host: str = "127.0.0.1", port
                 return run_audit_trace_budget(
                     steps=list(steps or []),
                     spans=list(spans or []),
-                    verifier_model=str(verifier_model or "gpt-4o-mini"),
+                    verifier_model=str(verifier_model or _default_verifier_model()),
                     default_target=float(default_target or 0.95),
                     require_citations=bool(require_citations),
                     context_mode=str(context_mode or "cited"),

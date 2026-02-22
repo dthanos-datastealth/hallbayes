@@ -65,8 +65,8 @@ Used by the MCP server:
   (and to embed into generated client config files).
 - `OPENAI_API_KEY` — required for `detect_hallucination` / `audit_trace_budget` (OpenAI backend).
 - `OPENAI_BASE_URL` — optional override for OpenAI-compatible endpoints.
-- `BERRY_MODEL` — default model name used by Berry (default: `chat`).
-- `BERRY_VERIFIER_MODEL` — model name used by the verifier (default: `BERRY_MODEL`).
+- `BERRY_MODEL` — optional default model name (used as a fallback for `BERRY_VERIFIER_MODEL`).
+- `BERRY_VERIFIER_MODEL` — model name used by the verifier (defaults to `BERRY_MODEL` or `gpt-4o-mini`).
 - `BERRY_VERIFIER_BACKEND` — verifier backend for budgets (`openai` default; `dummy` for offline tests).
 
 ### MCP env defaults
@@ -81,9 +81,9 @@ Be careful: this file may contain secrets (API keys). Keep it out of repos.
 Tip: you can manage this file via the CLI:
 
 ```bash
-berry auth            # prompts, then writes ~/.berry/mcp_env.json
-berry auth sk-...     # non-interactive
-berry auth --unset    # remove key
+berry setup         # prompts, then writes ~/.berry/mcp_env.json
+berry setup status  # show current setup (no secrets)
+berry setup clear   # clear saved setup
 ```
 
 ## Safety model

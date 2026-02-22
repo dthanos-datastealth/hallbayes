@@ -74,12 +74,10 @@ Remove a filesystem root from the allowed list.
 berry config remove-root /absolute/path
 ```
 
-## Auth / API keys
+## Setup / API keys
 
-### `berry auth`
-Store API keys and other env defaults for MCP launches.
-
-If you don't have an API key, sign up at https://strawberry.hassana.io/
+### `berry setup`
+Configure your verifier provider, model, and API key.
 
 This writes a JSON object to:
 
@@ -93,26 +91,29 @@ That file is then:
 Usage:
 
 ```bash
-# Recommended: guided setup (prompts for key and updates global client configs)
-berry auth --interactive
+# Guided setup (prompts for provider, model, and key)
+berry setup
 
-# Prompts for your key (also updates global client configs by default)
-berry auth
+# Show current setup (no secrets)
+berry setup status
 
-# Quick but shows up in shell history
-berry auth sk-...
+# Clear saved verifier setup (keeps unrelated env keys)
+berry setup clear
 
-# No history (reads from stdin)
-echo -n "sk-..." | berry auth --stdin
+# Non-interactive (OpenAI)
+echo -n "sk-..." | berry setup --provider openai --model gpt-4o-mini --stdin
 
-# Optional: set a custom OpenAI-compatible gateway
-berry auth --base-url https://your-gateway.example
+# OpenRouter (OpenAI-compatible)
+berry setup --provider openrouter --model openai/gpt-4o-mini
 
-# Remove the saved key
-berry auth --unset
+# Local vLLM (OpenAI-compatible server)
+berry setup --provider vllm --base-url http://localhost:8000/v1 --model your-model-name
 
 # If you only want to write ~/.berry/mcp_env.json (and NOT touch any client configs)
-berry auth --no-integrate
+berry setup --no-integrate
+
+# Skip the live "does this model return logprobs" probe (not recommended)
+berry setup --no-verify
 ```
 
 ## Support

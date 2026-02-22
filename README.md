@@ -18,7 +18,7 @@ Berry runs a local MCP server with a safe, repo‑scoped toolpack plus verificat
 Berry ships a single MCP surface: **classic**.
 
 Classic includes:
-- Strawberry verification tools (`detect_hallucination`, `audit_trace_budget`)
+- Verification tools (`detect_hallucination`, `audit_trace_budget`)
 - Run & evidence notebook tools (start/load runs, add/list/search spans)
 
 See `docs/MCP.md` and `docs/workflows/README.md`.
@@ -44,7 +44,7 @@ pip install -e .
 First, set your verifier API key (recommended):
 
 ```bash
-berry auth
+berry setup
 ```
 
 Then install repo-scoped MCP config files:
@@ -74,7 +74,6 @@ berry integrate
 
 ## Docs
 
-- Strawberry docs: https://strawberry.hassana.io/docs
 - `docs/USAGE.md` — task‑oriented guides
 - `docs/CLI.md` — command reference
 - `docs/CONFIGURATION.md` — config files, defaults, and env vars

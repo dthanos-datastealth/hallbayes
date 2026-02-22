@@ -11,7 +11,6 @@ from typing import Optional
 
 from . import __version__
 from .audit import export_events, prune_events
-from .auth_flow import run_login_flow
 from .clients import (
     berry_server_specs,
     render_claude_mcp_json,
@@ -325,204 +324,253 @@ def cmd_config_remove_root(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_auth_login(args: argparse.Namespace) -> int:
-    """Browser-based authentication flow (like Claude Code, Codex, Gemini CLI).
-
-    Opens a browser for authentication via the Strawberry website.
-    For headless environments, use --device to display a code instead.
-    """
-    force_device = bool(getattr(args, "device", False))
-    force_localhost = bool(getattr(args, "localhost", False))
-    no_integrate = bool(getattr(args, "no_integrate", False))
-    verbose = bool(getattr(args, "verbose", False))
-
-    return run_login_flow(
-        force_device=force_device,
-        force_localhost=force_localhost,
-        no_integrate=no_integrate,
-        interactive=True,
-        verbose=verbose,
-    )
+_SETUP_ENV_KEYS = {
+    # Verifier selection
+    "BERRY_VERIFIER_BACKEND",
+    "BERRY_VERIFIER_MODEL",
+    "BERRY_MODEL",
+    # OpenAI-compatible backends (OpenAI/OpenRouter/vLLM/etc.)
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+}
 
 
-def cmd_auth_status(_: argparse.Namespace) -> int:
-    """Show current authentication status."""
-    p = mcp_env_path()
-
+def _load_env_file(p: Path) -> dict[str, str]:
     if not p.exists():
-        print("Not authenticated.")
-        print("Run 'berry auth login' to authenticate.")
-        return 1
-
+        return {}
     try:
-        env = json.loads(p.read_text(encoding="utf-8"))
-        api_key = env.get("OPENAI_API_KEY", "")
-
-        if not api_key:
-            print("Not authenticated.")
-            print("Run 'berry auth login' to authenticate.")
-            return 1
-
-        # Mask the API key
-        masked = api_key[:8] + "..." + api_key[-4:] if len(api_key) > 12 else "***"
-
-        print("Authenticated")
-        print(f"  API Key: {masked}")
-        print(f"  Config:  {p}")
-
-        base_url = env.get("OPENAI_BASE_URL", "")
-        if base_url:
-            print(f"  Base URL: {base_url}")
-
-        return 0
-    except Exception as e:
-        print(f"Error reading config: {e}")
-        return 1
+        raw = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            return {}
+        return {str(k): str(v) for k, v in raw.items() if k and v is not None}
+    except Exception:
+        return {}
 
 
-def cmd_auth_logout(_: argparse.Namespace) -> int:
-    """Remove saved credentials."""
+def _write_env_file(p: Path, env: dict[str, str]) -> None:
+    if env:
+        p.write_text(json.dumps(env, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        try:
+            if os.name != "nt":
+                p.chmod(0o600)
+        except Exception:
+            pass
+        return
+    if p.exists():
+        p.unlink()
+
+
+def _mask_secret(s: str) -> str:
+    ss = (s or "").strip()
+    if not ss:
+        return ""
+    if len(ss) <= 12:
+        return "***"
+    return ss[:8] + "..." + ss[-4:]
+
+
+def cmd_setup_status(_: argparse.Namespace) -> int:
+    """Show current verifier setup status (no secrets)."""
     p = mcp_env_path()
-
-    if not p.exists():
-        print("No credentials found.")
-        return 0
-
-    try:
-        env = json.loads(p.read_text(encoding="utf-8"))
-        env.pop("OPENAI_API_KEY", None)
-
-        if env:
-            # Keep other settings
-            p.write_text(json.dumps(env, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        else:
-            # Remove empty file
-            p.unlink()
-
-        print("Logged out successfully.")
-        print(f"Removed credentials from: {p}")
-        return 0
-    except Exception as e:
-        print(f"Error removing credentials: {e}")
+    env = _load_env_file(p)
+    if not env:
+        print("Not set up.")
+        print("Run `berry setup` to configure a verifier.")
         return 1
 
+    backend = (env.get("BERRY_VERIFIER_BACKEND") or "openai").strip() or "openai"
+    model = (env.get("BERRY_VERIFIER_MODEL") or env.get("BERRY_MODEL") or "").strip()
+    api_key = (env.get("OPENAI_API_KEY") or "").strip()
+    base_url = (env.get("OPENAI_BASE_URL") or "").strip()
 
-def cmd_auth_default(args: argparse.Namespace) -> int:
-    """Default auth command - show help if no subcommand."""
-    # Check if user passed a positional argument (legacy `berry auth <key>` usage)
-    # This maintains backwards compatibility
-    if hasattr(args, "api_key") and args.api_key:
-        # Legacy mode: treat as `berry auth set <key>`
-        return cmd_auth(args)
+    print("Berry setup")
+    print(f"  Config:  {p}")
+    print(f"  Backend: {backend}")
+    if model:
+        print(f"  Model:   {model}")
+    if base_url:
+        print(f"  Base URL: {base_url}")
+    if api_key:
+        print(f"  API Key: {_mask_secret(api_key)}")
 
-    # No subcommand - show help
-    print("Berry Authentication")
-    print("")
-    print("Commands:")
-    print("  berry auth login     Authenticate via browser (recommended)")
-    print("  berry auth set       Set API key directly (for CI/CD)")
-    print("  berry auth status    Show current authentication status")
-    print("  berry auth logout    Remove saved credentials")
-    print("")
-    print("Examples:")
-    print("  berry auth login             # Opens browser for authentication")
-    print("  berry auth login --device    # For headless environments (SSH, containers)")
-    print("  berry auth set sk-xxx        # Set API key directly")
-    print("  echo sk-xxx | berry auth set --stdin")
+    ok = bool(api_key) if backend == "openai" else True
+    return 0 if ok else 1
+
+
+def cmd_setup_clear(_: argparse.Namespace) -> int:
+    """Remove saved verifier setup (keeps unrelated env keys)."""
+    p = mcp_env_path()
+    env = _load_env_file(p)
+    if not env:
+        print("No setup found.")
+        return 0
+
+    for k in sorted(_SETUP_ENV_KEYS):
+        env.pop(k, None)
+
+    _write_env_file(p, env)
+    print("Cleared verifier setup.")
+    print(str(p))
     return 0
 
 
-def cmd_auth(args: argparse.Namespace) -> int:
-    """Store API keys / env defaults for MCP launches.
+def _prompt_provider() -> str:
+    choices = {
+        "1": "openai",
+        "2": "openrouter",
+        "3": "vllm",
+        "4": "custom",
+    }
+    print("Choose a verifier provider:")
+    print("  1) OpenAI (api.openai.com)")
+    print("  2) OpenRouter (openrouter.ai)")
+    print("  3) Local vLLM (OpenAI-compatible server)")
+    print("  4) Custom OpenAI-compatible base URL")
+    while True:
+        raw = (input("Provider [1-4]: ") or "").strip().lower()
+        if raw in choices:
+            return choices[raw]
+        if raw in {"openai", "openrouter", "vllm", "custom"}:
+            return raw
+        print("Invalid choice. Enter 1-4.")
 
-    This writes a JSON object to `~/.berry/mcp_env.json` (or `$BERRY_HOME/mcp_env.json`).
-    That file is then:
-      - embedded into generated client config files (`berry init`, `berry print-config`, ...)
-      - applied at server startup (without overriding explicit process env)
 
-    Usage:
-      - `berry auth --interactive` (guided setup; writes global client configs)
-      - `berry auth sk-...` (quick, but shows in shell history)
-      - `berry auth` (prompts securely)
-      - `echo sk-... | berry auth --stdin` (no history)
-    """
+def _normalize_base_url(raw: Optional[str]) -> Optional[str]:
+    s = (raw or "").strip()
+    if not s:
+        return None
+    # Avoid accidental double-slashes when SDK appends paths.
+    return s.rstrip("/")
+
+
+def _probe_openai_compat_logprobs(*, base_url: Optional[str], api_key: str, model: str) -> tuple[bool, str]:
+    """Best-effort probe: does this endpoint+model return top_logprobs for chat.completions?"""
+    try:
+        from openai import OpenAI  # type: ignore
+    except Exception as e:
+        return False, f"openai SDK not available: {e}"
+
+    kwargs: dict[str, object] = {"api_key": str(api_key), "timeout": 20}
+    if base_url:
+        kwargs["base_url"] = str(base_url)
+
+    client = OpenAI(**kwargs)
+
+    try:
+        resp = client.chat.completions.create(
+            model=str(model),
+            messages=[
+                {"role": "system", "content": "Reply with a single token: YES"},
+                {"role": "user", "content": "YES"},
+            ],
+            temperature=0,
+            max_tokens=1,
+            logprobs=True,
+            top_logprobs=5,
+        )
+    except Exception as e:
+        return False, f"probe call failed: {e}"
+
+    try:
+        choice = resp.choices[0]
+        lp = getattr(choice, "logprobs", None)
+        content = getattr(lp, "content", None) if lp is not None else None
+        if not content:
+            return False, "probe succeeded but logprobs were missing/empty"
+        first = content[0]
+        top = getattr(first, "top_logprobs", None)
+        if not top:
+            return False, "probe succeeded but top_logprobs were missing/empty"
+    except Exception as e:
+        return False, f"unexpected probe response shape: {e}"
+
+    return True, "ok"
+
+
+def cmd_setup_set(args: argparse.Namespace) -> int:
+    """Configure Berry verifier backend/model and write ~/.berry/mcp_env.json."""
     ensure_berry_home()
     p = mcp_env_path()
+    env = _load_env_file(p)
 
-    # Static defaults for this distribution.
-    # OPENAI_BASE_URL: LiteLLM gateway for direct LLM calls
-    # BERRY_SERVICE_URL: Berry verification service with auth/budget middleware
-    DEFAULT_BASE_URL = "http://20.232.57.156/v1"
-    DEFAULT_BERRY_SERVICE_URL = "http://52.191.234.157:8000"
+    provider = (getattr(args, "provider", None) or "").strip().lower()
+    if not provider:
+        if not sys.stdin.isatty():
+            raise SystemExit("--provider is required in non-interactive mode")
+        provider = _prompt_provider()
 
-    # Load existing env defaults (if any).
-    env: dict[str, str] = {}
-    if p.exists():
-        try:
-            raw = json.loads(p.read_text(encoding="utf-8"))
-            if isinstance(raw, dict):
-                env = {str(k): str(v) for k, v in raw.items() if k and v is not None}
-        except Exception:
-            env = {}
+    if provider not in {"openai", "openrouter", "vllm", "custom"}:
+        raise SystemExit(f"Unknown provider: {provider!r}")
 
-    unset = bool(getattr(args, "unset", False))
-    stdin = bool(getattr(args, "stdin", False))
-    interactive = bool(getattr(args, "interactive", False))
-    no_integrate = bool(getattr(args, "no_integrate", False))
-    base_url = getattr(args, "base_url", None)
-    api_key = getattr(args, "api_key", None)
-
-    if interactive:
-        print("Berry auth (guided setup)")
-        print("- Stores your API key locally")
-        print("- Updates global MCP configs for supported clients (Cursor, Claude Code, Codex, Gemini CLI)")
-        print("")
-        print("If you don't have an API key, please sign up at https://strawberry.hassana.io/")
-        print("")
-
-    if unset:
-        env.pop("OPENAI_API_KEY", None)
+    base_url = _normalize_base_url(getattr(args, "base_url", None))
+    if provider == "openai":
+        base_url = base_url  # optional override (e.g., proxy)
+    elif provider == "openrouter":
+        base_url = base_url or "https://openrouter.ai/api/v1"
+    elif provider == "vllm":
+        base_url = base_url or "http://localhost:8000/v1"
     else:
-        key = ""
-        if stdin:
-            key = (sys.stdin.read() or "").strip()
+        # custom
+        if not base_url:
+            if not sys.stdin.isatty():
+                raise SystemExit("--base-url is required for provider=custom")
+            base_url = _normalize_base_url(input("Base URL (OpenAI-compatible, include /v1): ").strip())
+        if not base_url:
+            raise SystemExit("No base URL provided.")
+
+    model = (getattr(args, "model", None) or "").strip()
+    if not model and sys.stdin.isatty():
+        default_model = (
+            (env.get("BERRY_VERIFIER_MODEL") or "").strip()
+            or (env.get("BERRY_MODEL") or "").strip()
+            or "gpt-4o-mini"
+        )
+        model = (input(f"Verifier model [{default_model}]: ") or "").strip() or default_model
+    if not model:
+        raise SystemExit("--model is required (or run interactively).")
+
+    stdin = bool(getattr(args, "stdin", False))
+    api_key = (getattr(args, "api_key", None) or "").strip()
+    if stdin:
+        api_key = (sys.stdin.read() or "").strip()
+    if not api_key:
+        if not sys.stdin.isatty():
+            raise SystemExit("--api-key or --stdin is required in non-interactive mode")
+        if provider == "vllm":
+            api_key = (input("API key for vLLM (press enter for 'local'): ") or "").strip() or "local"
         else:
-            key = str(api_key or "").strip()
-        if not key:
-            print("If you don't have an API key, please sign up at https://strawberry.hassana.io/")
-            key = getpass.getpass("API key (will be saved locally): ").strip()
-        if not key:
-            raise SystemExit("No API key provided.")
-        env["OPENAI_API_KEY"] = key
+            api_key = getpass.getpass("API key (will be saved locally): ").strip()
+    if not api_key:
+        raise SystemExit("No API key provided.")
 
+    no_verify = bool(getattr(args, "no_verify", False))
+    if not no_verify:
+        ok, msg = _probe_openai_compat_logprobs(base_url=base_url, api_key=api_key, model=model)
+        if not ok:
+            raise SystemExit(
+                "Verifier probe failed (model missing or logprobs unsupported).\n"
+                f"Provider: {provider}\n"
+                f"Base URL: {base_url or '(default)'}\n"
+                f"Model:    {model}\n"
+                f"Error:    {msg}\n"
+                "\n"
+                "Tip: Berry's current verifier requires token logprobs + top_logprobs."
+            )
+
+    # Apply updates (preserve unrelated keys).
+    env["BERRY_VERIFIER_BACKEND"] = "openai"
+    env["BERRY_VERIFIER_MODEL"] = model
+    env["OPENAI_API_KEY"] = api_key
     if base_url:
-        env["OPENAI_BASE_URL"] = str(base_url).strip()
-    elif "OPENAI_BASE_URL" not in env or not str(env.get("OPENAI_BASE_URL") or "").strip():
-        # Keep base URL pinned unless the user explicitly overrides it.
-        env["OPENAI_BASE_URL"] = DEFAULT_BASE_URL
+        env["OPENAI_BASE_URL"] = base_url
+    else:
+        env.pop("OPENAI_BASE_URL", None)
 
-    # Set Berry service URL for verification middleware
-    if "BERRY_SERVICE_URL" not in env or not str(env.get("BERRY_SERVICE_URL") or "").strip():
-        env["BERRY_SERVICE_URL"] = DEFAULT_BERRY_SERVICE_URL
+    _write_env_file(p, env)
 
-    # Write.
-    p.write_text(json.dumps(env, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-    # Best-effort: lock down permissions on POSIX.
-    try:
-        if os.name != "nt":
-            p.chmod(0o600)
-    except Exception:
-        pass
-
-    # IMPORTANT: After updating credentials, immediately propagate them into
-    # global client config deployments (where those clients read MCP servers).
-    # This is what makes a .pkg installer feel "installed" without requiring
-    # a separate `berry integrate` step.
+    # Optional: propagate env into global MCP client config files.
     results = []
-    if not no_integrate:
-        if interactive:
-            print("Updating global MCP client configs...")
+    if not bool(getattr(args, "no_integrate", False)):
         try:
             results = integrate(
                 clients=["cursor", "claude", "codex", "gemini"],
@@ -533,27 +581,26 @@ def cmd_auth(args: argparse.Namespace) -> int:
                 managed_only=False,
             )
         except Exception as e:
-            if interactive:
-                print(f"warn: saved credentials but failed to update global MCP configs: {e}")
+            print(f"warn: saved setup but failed to update global MCP configs: {e}")
 
-    # Print only the path + what keys are present (never echo secrets).
-    keys = sorted([k for k in env.keys()])
+    keys = sorted(env.keys())
     print(str(p))
     print("saved_keys=" + ",".join(keys) if keys else "saved_keys=(none)")
 
-    # Summarize integration results.
-    if results:
-        if interactive:
-            print("\nGlobal MCP config update results:")
-            for r in results:
-                print(f"- {r.client}: {r.status} ({r.message})")
-        else:
-            # Non-interactive: only surface failures.
-            for r in results:
-                if r.status != "ok":
-                    print(f"{r.client}: {r.status} - {r.message}")
+    for r in results:
+        if r.status != "ok":
+            print(f"{r.client}: {r.status} - {r.message}")
 
     return 0
+
+
+def cmd_setup(args: argparse.Namespace) -> int:
+    subcmd = (getattr(args, "setup_cmd", None) or "").strip().lower()
+    if subcmd == "status":
+        return cmd_setup_status(args)
+    if subcmd == "clear":
+        return cmd_setup_clear(args)
+    return cmd_setup_set(args)
 
 
 def cmd_support_bundle(args: argparse.Namespace) -> int:
@@ -725,7 +772,7 @@ def cmd_integrate(args: argparse.Namespace) -> int:
 
 def cmd_quickstart(_: argparse.Namespace) -> int:
     print("1) Install Berry so `berry` is on PATH (e.g., via pipx).")
-    print("2) Set your verifier API key (recommended): `berry auth` (writes ~/.berry/mcp_env.json).")
+    print("2) Configure a verifier (recommended): `berry setup` (writes ~/.berry/mcp_env.json).")
     print("3) Optional: run `berry integrate` to register Berry globally in supported clients (Cursor, Claude Code, Codex, Gemini CLI).")
     print("4) In your repo root: run `berry init` to create repo-scoped MCP config files.")
     print("5) In your MCP client (Cursor/Codex/Claude Code/Gemini CLI), reload MCP servers for the repo.")
@@ -814,72 +861,27 @@ def build_parser() -> argparse.ArgumentParser:
     cfg_rm.add_argument("path")
     cfg_rm.set_defaults(fn=cmd_config_remove_root)
 
-    auth = sub.add_parser("auth", help="Authentication commands")
-    auth_sub = auth.add_subparsers(dest="auth_cmd")
-
-    # `berry auth login` - browser-based auth flow (like Claude Code, Codex, Gemini CLI)
-    auth_login = auth_sub.add_parser(
-        "login",
-        help="Authenticate via browser (recommended)",
-    )
-    auth_login.add_argument(
-        "--device",
-        action="store_true",
-        help="Use device code flow (for headless/remote environments)",
-    )
-    auth_login.add_argument(
-        "--localhost",
-        action="store_true",
-        help="Force localhost callback flow",
-    )
-    auth_login.add_argument(
-        "--no-integrate",
-        action="store_true",
-        help="Do not update global client config files",
-    )
-    auth_login.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Show detailed polling information for debugging",
-    )
-    auth_login.set_defaults(fn=cmd_auth_login)
-
-    # `berry auth set` - direct API key entry (backwards compatible with old `berry auth <key>`)
-    auth_set = auth_sub.add_parser(
-        "set",
-        help="Set API key directly (for CI/CD)",
-    )
-    auth_set.add_argument(
-        "api_key",
-        nargs="?",
+    setup = sub.add_parser("setup", help="Configure verifier backend/model and API keys")
+    setup.add_argument(
+        "--provider",
+        choices=["openai", "openrouter", "vllm", "custom"],
         default=None,
-        help="API key (optional; if omitted, you'll be prompted)",
+        help="Verifier provider preset (prompts if omitted)",
     )
-    auth_set.add_argument("--stdin", action="store_true", help="Read API key from stdin")
-    auth_set.add_argument("--base-url", default=None, help="Optional OpenAI-compatible base URL")
-    auth_set.add_argument(
+    setup.add_argument("--model", default=None, help="Verifier model name/id")
+    setup.add_argument("--api-key", dest="api_key", default=None, help="API key (optional; prompts if omitted)")
+    setup.add_argument("--stdin", action="store_true", help="Read API key from stdin")
+    setup.add_argument("--base-url", dest="base_url", default=None, help="OpenAI-compatible base URL (include /v1)")
+    setup.add_argument("--no-verify", action="store_true", help="Skip live logprobs probe (not recommended)")
+    setup.add_argument(
         "--no-integrate",
         action="store_true",
-        help="Do not update global client config files",
+        help="Do not update global client config files after saving",
     )
-    auth_set.set_defaults(fn=cmd_auth)
-
-    # `berry auth status` - show current auth status
-    auth_status = auth_sub.add_parser(
-        "status",
-        help="Show current authentication status",
-    )
-    auth_status.set_defaults(fn=cmd_auth_status)
-
-    # `berry auth logout` - remove saved credentials
-    auth_logout = auth_sub.add_parser(
-        "logout",
-        help="Remove saved credentials",
-    )
-    auth_logout.set_defaults(fn=cmd_auth_logout)
-
-    # Default: if no subcommand, show help or run legacy behavior
-    auth.set_defaults(fn=cmd_auth_default)
+    setup_sub = setup.add_subparsers(dest="setup_cmd")
+    setup_sub.add_parser("status", help="Show current verifier setup status")
+    setup_sub.add_parser("clear", help="Clear saved verifier setup")
+    setup.set_defaults(fn=cmd_setup)
 
     sup = sub.add_parser("support", help="Support tooling")
     sup_sub = sup.add_subparsers(dest="support_cmd", required=True)
