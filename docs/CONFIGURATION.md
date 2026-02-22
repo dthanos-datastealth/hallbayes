@@ -63,11 +63,15 @@ Used by the MCP server:
 - `BERRY_EXEC_NETWORK_MODE` — override `exec_network_mode` (inherit|deny|deny_if_possible).
 - `BERRY_MCP_ENV_JSON` — JSON object string of env vars to apply when Berry runs as an MCP server
   (and to embed into generated client config files).
-- `OPENAI_API_KEY` — required for `detect_hallucination` / `audit_trace_budget` (OpenAI backend).
+- `OPENAI_API_KEY` — required for `detect_hallucination` / `audit_trace_budget` when using the `openai` backend.
 - `OPENAI_BASE_URL` — optional override for OpenAI-compatible endpoints.
+- `VERTEX_ACCESS_TOKEN` — OAuth2 access token for the `vertex` backend (sent as `Authorization: Bearer ...`).
+- `VERTEX_BASE_URL` — optional base URL for Vertex (defaults to `https://aiplatform.googleapis.com`).
+- `VERTEX_PROJECT` — optional; used to expand short Vertex model ids into full resource names.
+- `VERTEX_LOCATION` — optional; used to expand short Vertex model ids into full resource names.
 - `BERRY_MODEL` — optional default model name (used as a fallback for `BERRY_VERIFIER_MODEL`).
 - `BERRY_VERIFIER_MODEL` — model name used by the verifier (defaults to `BERRY_MODEL` or `gpt-4o-mini`).
-- `BERRY_VERIFIER_BACKEND` — verifier backend for budgets (`openai` default; `dummy` for offline tests).
+- `BERRY_VERIFIER_BACKEND` — verifier backend for budgets (`openai` default; `vertex` for Vertex AI; `dummy` for offline tests).
 
 ### MCP env defaults
 
@@ -76,7 +80,7 @@ any key/value pairs as process environment variables (without overriding existin
 useful for configuring verifier endpoints (e.g., `OPENAI_BASE_URL`) without requiring every client
 to support per-server env injection.
 
-Be careful: this file may contain secrets (API keys). Keep it out of repos.
+Be careful: this file may contain secrets (API keys, access tokens). Keep it out of repos.
 
 Tip: you can manage this file via the CLI:
 

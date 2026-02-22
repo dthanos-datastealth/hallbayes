@@ -77,7 +77,7 @@ berry config remove-root /absolute/path
 ## Setup / API keys
 
 ### `berry setup`
-Configure your verifier provider, model, and API key.
+Configure your verifier provider, model, and API key / access token.
 
 This writes a JSON object to:
 
@@ -108,6 +108,12 @@ berry setup --provider openrouter --model openai/gpt-4o-mini
 
 # Local vLLM (OpenAI-compatible server)
 berry setup --provider vllm --base-url http://localhost:8000/v1 --model your-model-name
+
+# Vertex AI (Gemini via Vertex generateContent)
+berry setup --provider vertex --vertex-project your-gcp-project --vertex-location us-central1 --model gemini-2.0-flash-001
+
+# Non-interactive Vertex (access token from gcloud)
+gcloud auth print-access-token | berry setup --provider vertex --model projects/PROJECT/locations/LOCATION/publishers/google/models/gemini-2.0-flash-001 --stdin
 
 # If you only want to write ~/.berry/mcp_env.json (and NOT touch any client configs)
 berry setup --no-integrate

@@ -158,7 +158,7 @@ Berry exposes two verification tools:
 - `detect_hallucination` — scores an answer containing `[S#]` citations against provided spans.
 - `audit_trace_budget` — scores an explicit list of `(claim, cites)` steps.
 
-These tools require `OPENAI_API_KEY` to be set (see `CONFIGURATION.md`).
+These tools require a verifier to be configured (see `CONFIGURATION.md`). The `openai` backend uses `OPENAI_API_KEY`; the `vertex` backend uses `VERTEX_ACCESS_TOKEN`. The easiest path is `berry setup`.
 
 ## Audit log export / prune
 
