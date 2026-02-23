@@ -109,6 +109,12 @@ berry setup --provider openrouter --model openai/gpt-4o-mini
 # Local vLLM (OpenAI-compatible server)
 berry setup --provider vllm --base-url http://localhost:8000/v1 --model your-model-name
 
+# Gemini Developer API (ai.google.dev)
+berry setup --provider gemini --model gemini-2.0-flash
+
+# Non-interactive Gemini
+echo -n "AIza..." | berry setup --provider gemini --model gemini-2.0-flash --stdin
+
 # Vertex AI (Gemini via Vertex generateContent)
 berry setup --provider vertex --vertex-project your-gcp-project --vertex-location us-central1 --model gemini-2.0-flash-001
 

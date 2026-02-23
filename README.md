@@ -31,12 +31,12 @@ Berry’s current verification method requires token logprobs (Chat Completions-
 
 Supported today:
 - `openai` (default): OpenAI-compatible Chat Completions endpoints with logprobs (OpenAI, OpenRouter, local vLLM, or any compatible `base_url`)
+- `gemini`: Gemini Developer API `generateContent` with token logprobs via `logprobsResult` (when enabled for the model)
 - `vertex`: Vertex AI `generateContent` (Gemini models) with token logprobs via `logprobsResult`
 - `dummy`: deterministic offline backend for tests/dev
 
 Not supported yet:
 - Anthropic (OpenAI-compat layer ignores `logprobs`)
-- Gemini Developer API (ai.google.dev) (logprobs exist, but Berry needs a dedicated backend adapter)
 
 ## Quickstart
 

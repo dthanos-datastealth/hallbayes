@@ -332,6 +332,9 @@ _SETUP_ENV_KEYS = {
     # OpenAI-compatible backends (OpenAI/OpenRouter/vLLM/etc.)
     "OPENAI_API_KEY",
     "OPENAI_BASE_URL",
+    # Gemini Developer API
+    "GEMINI_API_KEY",
+    "GEMINI_BASE_URL",
     # Vertex AI (Gemini via Vertex generateContent)
     "VERTEX_ACCESS_TOKEN",
     "VERTEX_BASE_URL",
@@ -387,6 +390,8 @@ def cmd_setup_status(_: argparse.Namespace) -> int:
     model = (env.get("BERRY_VERIFIER_MODEL") or env.get("BERRY_MODEL") or "").strip()
     api_key = (env.get("OPENAI_API_KEY") or "").strip()
     base_url = (env.get("OPENAI_BASE_URL") or "").strip()
+    gemini_key = (env.get("GEMINI_API_KEY") or "").strip()
+    gemini_base_url = (env.get("GEMINI_BASE_URL") or "").strip()
     vertex_token = (env.get("VERTEX_ACCESS_TOKEN") or "").strip()
     vertex_base_url = (env.get("VERTEX_BASE_URL") or "").strip()
     vertex_project = (env.get("VERTEX_PROJECT") or "").strip()
@@ -402,6 +407,11 @@ def cmd_setup_status(_: argparse.Namespace) -> int:
             print(f"  Base URL: {base_url}")
         if api_key:
             print(f"  API Key: {_mask_secret(api_key)}")
+    elif backend == "gemini":
+        if gemini_base_url:
+            print(f"  Base URL: {gemini_base_url}")
+        if gemini_key:
+            print(f"  API Key: {_mask_secret(gemini_key)}")
     elif backend == "vertex":
         if vertex_project:
             print(f"  Project: {vertex_project}")
@@ -412,7 +422,15 @@ def cmd_setup_status(_: argparse.Namespace) -> int:
         if vertex_token:
             print(f"  Access Token: {_mask_secret(vertex_token)}")
 
-    ok = bool(api_key) if backend == "openai" else bool(vertex_token) if backend == "vertex" else True
+    ok = (
+        bool(api_key)
+        if backend == "openai"
+        else bool(gemini_key)
+        if backend == "gemini"
+        else bool(vertex_token)
+        if backend == "vertex"
+        else True
+    )
     return 0 if ok else 1
 
 
@@ -440,6 +458,7 @@ def _prompt_provider() -> str:
         "3": "vllm",
         "4": "custom",
         "5": "vertex",
+        "6": "gemini",
     }
     print("Choose a verifier provider:")
     print("  1) OpenAI (api.openai.com)")
@@ -447,13 +466,14 @@ def _prompt_provider() -> str:
     print("  3) Local vLLM (OpenAI-compatible server)")
     print("  4) Custom OpenAI-compatible base URL")
     print("  5) Vertex AI (Gemini via Vertex generateContent)")
+    print("  6) Gemini Developer API (ai.google.dev)")
     while True:
-        raw = (input("Provider [1-5]: ") or "").strip().lower()
+        raw = (input("Provider [1-6]: ") or "").strip().lower()
         if raw in choices:
             return choices[raw]
-        if raw in {"openai", "openrouter", "vllm", "custom", "vertex"}:
+        if raw in {"openai", "openrouter", "vllm", "custom", "vertex", "gemini"}:
             return raw
-        print("Invalid choice. Enter 1-5.")
+        print("Invalid choice. Enter 1-6.")
 
 
 def _normalize_base_url(raw: Optional[str]) -> Optional[str]:
@@ -553,6 +573,55 @@ def _probe_vertex_logprobs(*, base_url: Optional[str], access_token: str, model:
     return True, "ok"
 
 
+def _probe_gemini_logprobs(*, base_url: Optional[str], api_key: str, model: str) -> tuple[bool, str]:
+    """Best-effort probe: does this Gemini model return logprobsResult for generateContent?"""
+    try:
+        import httpx  # type: ignore
+    except Exception as e:
+        return False, f"httpx not available: {e}"
+
+    base = (base_url or "https://generativelanguage.googleapis.com").rstrip("/")
+    m = str(model or "").strip()
+    if not (m.startswith("models/") or m.startswith("tunedModels/")):
+        m = "models/" + m
+
+    url = f"{base}/v1beta/{m}:generateContent"
+    headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": "YES"}]}],
+        "systemInstruction": {"parts": [{"text": "Reply with a single token: YES"}]},
+        "generationConfig": {
+            "temperature": 0,
+            "maxOutputTokens": 1,
+            "responseLogprobs": True,
+            "logprobs": 5,
+        },
+    }
+
+    try:
+        resp = httpx.post(url, json=payload, headers=headers, timeout=20)
+    except Exception as e:
+        return False, f"probe call failed: {e}"
+    if resp.status_code >= 400:
+        return False, f"{resp.status_code}: {resp.text}"
+
+    try:
+        data = resp.json()
+        cand = (data.get("candidates") or [None])[0] or {}
+        if not isinstance(cand, dict):
+            return False, "probe succeeded but response candidates[0] was not an object"
+        lr = cand.get("logprobsResult") or cand.get("logprobs_result") or {}
+        if not isinstance(lr, dict) or not lr:
+            return False, "probe succeeded but logprobsResult was missing/empty"
+        top = lr.get("topCandidates") or lr.get("top_candidates") or []
+        if not top:
+            return False, "probe succeeded but topCandidates were missing/empty"
+    except Exception as e:
+        return False, f"unexpected probe response shape: {e}"
+
+    return True, "ok"
+
+
 def cmd_setup_set(args: argparse.Namespace) -> int:
     """Configure Berry verifier backend/model and write ~/.berry/mcp_env.json."""
     ensure_berry_home()
@@ -565,11 +634,13 @@ def cmd_setup_set(args: argparse.Namespace) -> int:
             raise SystemExit("--provider is required in non-interactive mode")
         provider = _prompt_provider()
 
-    if provider not in {"openai", "openrouter", "vllm", "custom", "vertex"}:
+    if provider not in {"openai", "openrouter", "vllm", "custom", "vertex", "gemini"}:
         raise SystemExit(f"Unknown provider: {provider!r}")
 
     base_url = _normalize_base_url(getattr(args, "base_url", None))
-    if provider == "vertex":
+    if provider == "gemini":
+        base_url = base_url or "https://generativelanguage.googleapis.com"
+    elif provider == "vertex":
         base_url = base_url or "https://aiplatform.googleapis.com"
     elif provider == "openai":
         base_url = base_url  # optional override (e.g., proxy)
@@ -623,6 +694,8 @@ def cmd_setup_set(args: argparse.Namespace) -> int:
             api_key = (input("API key for vLLM (press enter for 'local'): ") or "").strip() or "local"
         elif provider == "vertex":
             api_key = getpass.getpass("Vertex access token (will be saved locally): ").strip()
+        elif provider == "gemini":
+            api_key = getpass.getpass("Gemini API key (will be saved locally): ").strip()
         else:
             api_key = getpass.getpass("API key (will be saved locally): ").strip()
     if not api_key:
@@ -632,6 +705,8 @@ def cmd_setup_set(args: argparse.Namespace) -> int:
     if not no_verify:
         if provider == "vertex":
             ok, msg = _probe_vertex_logprobs(base_url=base_url, access_token=api_key, model=model)
+        elif provider == "gemini":
+            ok, msg = _probe_gemini_logprobs(base_url=base_url, api_key=api_key, model=model)
         else:
             ok, msg = _probe_openai_compat_logprobs(base_url=base_url, api_key=api_key, model=model)
         if not ok:
@@ -651,18 +726,32 @@ def cmd_setup_set(args: argparse.Namespace) -> int:
         env["BERRY_VERIFIER_BACKEND"] = "vertex"
         env.pop("OPENAI_API_KEY", None)
         env.pop("OPENAI_BASE_URL", None)
+        env.pop("GEMINI_API_KEY", None)
+        env.pop("GEMINI_BASE_URL", None)
         env["VERTEX_ACCESS_TOKEN"] = api_key
         env["VERTEX_BASE_URL"] = base_url
         if vertex_project:
             env["VERTEX_PROJECT"] = vertex_project
         if vertex_location:
             env["VERTEX_LOCATION"] = vertex_location
+    elif provider == "gemini":
+        env["BERRY_VERIFIER_BACKEND"] = "gemini"
+        env.pop("OPENAI_API_KEY", None)
+        env.pop("OPENAI_BASE_URL", None)
+        env.pop("VERTEX_ACCESS_TOKEN", None)
+        env.pop("VERTEX_BASE_URL", None)
+        env.pop("VERTEX_PROJECT", None)
+        env.pop("VERTEX_LOCATION", None)
+        env["GEMINI_API_KEY"] = api_key
+        env["GEMINI_BASE_URL"] = base_url
     else:
         env["BERRY_VERIFIER_BACKEND"] = "openai"
         env.pop("VERTEX_ACCESS_TOKEN", None)
         env.pop("VERTEX_BASE_URL", None)
         env.pop("VERTEX_PROJECT", None)
         env.pop("VERTEX_LOCATION", None)
+        env.pop("GEMINI_API_KEY", None)
+        env.pop("GEMINI_BASE_URL", None)
         env["OPENAI_API_KEY"] = api_key
         if base_url:
             env["OPENAI_BASE_URL"] = base_url
@@ -967,7 +1056,7 @@ def build_parser() -> argparse.ArgumentParser:
     setup = sub.add_parser("setup", help="Configure verifier backend/model and API keys")
     setup.add_argument(
         "--provider",
-        choices=["openai", "openrouter", "vllm", "custom", "vertex"],
+        choices=["openai", "openrouter", "vllm", "custom", "vertex", "gemini"],
         default=None,
         help="Verifier provider preset (prompts if omitted)",
     )
@@ -978,7 +1067,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--base-url",
         dest="base_url",
         default=None,
-        help="Base URL (OpenAI-compatible include /v1; Vertex uses https://aiplatform.googleapis.com)",
+        help="Base URL (OpenAI-compatible include /v1; Vertex uses https://aiplatform.googleapis.com; Gemini uses https://generativelanguage.googleapis.com)",
     )
     setup.add_argument("--vertex-project", dest="vertex_project", default=None, help="Vertex project id (optional)")
     setup.add_argument("--vertex-location", dest="vertex_location", default=None, help="Vertex location/region (optional)")
