@@ -1,0 +1,9 @@
+{
+  "plugins": [
+    {
+      "name": "berry",
+      "description": "Evidence-first verified coding workflows with hallucination detection. Ports Berry's 6 Codex workflow prompts as Claude Code skills backed by a local or cloud LLM verifier.",
+      "path": "."
+    }
+  ]
+}
