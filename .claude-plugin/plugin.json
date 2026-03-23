@@ -3,9 +3,9 @@
   "description": "Evidence-first verified coding workflows with hallucination detection. Ports Berry's 6 Codex workflow prompts as Claude Code skills backed by a local or cloud LLM verifier.",
   "version": "1.0.1",
   "author": {
-    "name": "dthanos-datastealth",
-    "url": "https://github.com/dthanos-datastealth/hallbayes"
+    "name": "dthanos-datastealth"
   },
   "homepage": "https://github.com/dthanos-datastealth/hallbayes",
+  "repository": "https://github.com/dthanos-datastealth/hallbayes",
   "keywords": ["verification", "hallucination", "evidence", "mcp", "coding", "berry"]
 }

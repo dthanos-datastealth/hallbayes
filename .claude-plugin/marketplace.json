@@ -1,9 +1,16 @@
 {
+  "name": "berry-marketplace",
+  "owner": {
+    "name": "dthanos-datastealth"
+  },
+  "metadata": {
+    "description": "Berry: evidence-first verified coding workflows with hallucination detection for Claude Code."
+  },
   "plugins": [
     {
       "name": "berry",
-      "description": "Evidence-first verified coding workflows with hallucination detection. Ports Berry's 6 Codex workflow prompts as Claude Code skills backed by a local or cloud LLM verifier.",
-      "path": "."
+      "source": "./",
+      "description": "Evidence-first verified coding workflows with hallucination detection. Ports Berry's 6 Codex workflow prompts as Claude Code skills backed by a local or cloud LLM verifier."
     }
   ]
 }
