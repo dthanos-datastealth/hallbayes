@@ -420,12 +420,35 @@ def create_server(*, project_root: Optional[Path], host: str = "127.0.0.1", port
     # -----------------------------
     # These tools run locally and rely on the configured verifier backend.
 
+    _discovered_model: List[Optional[str]] = [None]
+
+    def _query_server_model() -> Optional[str]:
+        """Query GET /v1/models on the configured base_url and return the first model id."""
+        base_url = (os.environ.get("OPENAI_BASE_URL") or "").strip().rstrip("/")
+        if not base_url:
+            return None
+        try:
+            import urllib.request
+            with urllib.request.urlopen(f"{base_url}/models", timeout=3) as resp:
+                data = json.loads(resp.read().decode())
+                # OpenAI-compatible: {"data": [{"id": "..."}]} or {"models": [{"id": "..."}]}
+                models = data.get("data") or data.get("models") or []
+                if models and isinstance(models, list):
+                    return str(models[0].get("id") or models[0].get("name") or "").strip() or None
+        except Exception:
+            pass
+        return None
+
     def _default_verifier_model() -> str:
-        return (
+        explicit = (
             (os.environ.get("BERRY_VERIFIER_MODEL") or "").strip()
             or (os.environ.get("BERRY_MODEL") or "").strip()
-            or "gpt-4o-mini"
         )
+        if explicit:
+            return explicit
+        if _discovered_model[0] is None:
+            _discovered_model[0] = _query_server_model() or "gpt-4o-mini"
+        return _discovered_model[0]
 
     @mcp.tool()
     def detect_hallucination(

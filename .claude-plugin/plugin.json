@@ -1,7 +1,7 @@
 {
   "name": "berry",
   "description": "Evidence-first verified coding workflows with hallucination detection. Ports Berry's 6 Codex workflow prompts as Claude Code skills backed by a local or cloud LLM verifier.",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "author": {
     "name": "dthanos-datastealth"
   },
