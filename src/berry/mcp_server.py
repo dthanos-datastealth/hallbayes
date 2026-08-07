@@ -159,11 +159,33 @@ def _score_text(text: str, tokens: List[str]) -> float:
     return float(score)
 
 
+def _mcp_import_error_message() -> str:
+    """Explain why `mcp.server.fastmcp` could not be imported.
+
+    Says which of the two causes it actually is. The SDK removed
+    `mcp.server.fastmcp` in 2.0, so an installed-but-too-new SDK fails exactly
+    like a missing one — and a message that only ever says "not installed"
+    sends the reader to check credentials and configuration, which are fine.
+    """
+    try:
+        from importlib.metadata import version
+
+        installed = version("mcp")
+    except Exception:
+        return "MCP SDK not installed. Run: pip install 'mcp[cli]<2'"
+
+    return (
+        f"MCP SDK {installed} is installed, but it does not provide "
+        "'mcp.server.fastmcp'. That module was removed in SDK 2.0; Berry needs "
+        "1.x. Run: pip install 'mcp[cli]<2'"
+    )
+
+
 def create_server(*, project_root: Optional[Path], host: str = "127.0.0.1", port: int = 8000) -> Any:
     try:
         from mcp.server.fastmcp import FastMCP
     except ImportError as exc:  # pragma: no cover
-        raise ImportError("MCP SDK not installed. Run: pip install 'mcp[cli]'") from exc
+        raise ImportError(_mcp_import_error_message()) from exc
 
     mcp = FastMCP("berry", json_response=True, host=host, port=port)
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "berry"
-version = "1.0.4"
+version = "1.0.5"
 description = "Berry: a local MCP runtime + opinionated toolpack for coding agents (works across MCP-enabled CLIs)"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
@@ -24,7 +24,11 @@ classifiers = [
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
-  "mcp[cli]>=1.0.0",
+  # Upper bound is load-bearing: the MCP SDK removed `mcp.server.fastmcp` in
+  # 2.0, which is what create_server() imports. Without the bound a fresh
+  # install resolves to 2.x and the server dies at startup with an ImportError,
+  # so Berry's tools never appear in the client at all.
+  "mcp[cli]>=1.0.0,<2",
   "openai>=1.0.0",
 ]
 
